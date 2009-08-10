@@ -1,5 +1,6 @@
 from buildbot.status import base
 from pymongo.connection import Connection
+from pymongo.son_manipulator import AutoReference, NamespaceInjector
 from pymongo.dbref import DBRef
 from pymongo import ASCENDING
 
@@ -23,6 +24,7 @@ class MongoDb(base.StatusReceiverMultiService):
             assert auth is True
 
         self._ensureStructure()
+        self._setAutoReference()
 
     def _ensureStructure(self):
         """
@@ -33,7 +35,7 @@ class MongoDb(base.StatusReceiverMultiService):
 #            'builder' : buildername,
 #            'slave' : slavename,
 #            'time_start' : datetime(),
-#            'time_stop' : datetime(),
+#            'time_end' : datetime(),
 #             'number' : number,
 #            'steps' : [step, step, step],
 #            TODO: coverage : '60%'
@@ -41,7 +43,7 @@ class MongoDb(base.StatusReceiverMultiService):
 #        steps = {
 #            'build' : build,
 #            'time_start' : datetime(),
-#            'time_stop' : datetime(),
+#            'time_end' : datetime(),
 #            'stdout' : '',
 #            'stderr' : '',
 #            'successful' : True,
@@ -56,6 +58,10 @@ class MongoDb(base.StatusReceiverMultiService):
                 if index not in self.database[collection].index_information():
                     self.database[collection].create_index(index, ASCENDING)
 
+    def _setAutoReference(self):
+        self.database.add_son_manipulator(NamespaceInjector())
+        self.database.add_son_manipulator(AutoReference(self.database))
+    
     def builderAdded(self, name, builder):
         self.watched.append(builder)
         return self
@@ -68,13 +74,22 @@ class MongoDb(base.StatusReceiverMultiService):
             'builder' : builder.getName(),
             'slaves' : [name for name in builder.slavenames],
             'number' : build.getNumber(),
-#            'time_start' : datetime(),
-#            'time_stop' : datetime(),
+            'time_start' : builder.getTimes()[0],
+            'time_end' : None,
             'steps' : [],
         }
 
         self.database.builds.insert(data)
-        
+
+    def getDatabaseBuilder(number, name, time_start):
+        build = self.database.builds.find_one({
+            'number' : build.getNumber(),
+            'builder' : builderName,
+            'time_start' : build.getBuilder().getTimes()[0]
+        })
+        assert build is not None
+        return build
+
     def buildFinished(builderName, build, results):
         """
         A build has just finished. 'results' is the result tuple described
@@ -85,8 +100,28 @@ class MongoDb(base.StatusReceiverMultiService):
         @type  results:     tuple
         """
 
+        dbbuild = self.getDatabaseBuilder(number = build.getNumber(),
+            builder = builderName,
+            time_start = build.getBuilder().getTimes()[0]
+        )
+
+        dbbuild['time_end'] = build.getBuilder().getTimes()[1]
+
+        self.database.builds.save(dbbuild)
+
     def stepStarted(self, build, step):
-        pass
+        dbbuild = self.getDatabaseBuilder(number = build.getNumber(),
+            builder = builderName,
+            time_start = build.getBuilder().getTimes()[0]
+        )
+        self.database.steps.insert({
+            'build' : dbbuild,
+            'time_start' : step.getTimes()[0],
+            'time_end' : step.getTimes()[1],
+            'stdout' : '',
+            'stderr' : '',
+            'successful' : True,
+        })
 
     def stepTextChanged(self, build, step, text):
         pass
