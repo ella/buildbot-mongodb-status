@@ -1,0 +1,6 @@
+Buildbot-Mongodb-Status
+================
+
+Status reporter for feeding buildbot statuses into mongodb database.
+
+
