@@ -131,14 +131,7 @@ class MongoDb(base.StatusReceiverMultiService):
         @type  build:       L{buildbot.status.builder.BuildStatus}
         @type  results:     tuple
         """
-
-        build.db_build = self.getDatabaseBuilder(number = build.getNumber(),
-            build = build,
-            time_start = build.getTimes()[0]
-        )
-
         build.db_build['time_end'] = build.getTimes()[1]
-
         self.database.builds.save(build.db_build)
 
     def stepStarted(self, build, step):
