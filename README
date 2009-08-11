@@ -1,13 +1,12 @@
 Buildbot-Mongodb-Status
-================
+========================
 
 Status reporter for feeding buildbot statuses into mongodb database.
+
+Warning: No tests ahead (yeat). Still work in progress.
 
 Example:
 
 from bbmongostatus.status import MongoDb
-c['status'].append(MongoDb(
-        host="localhost",
-        port=27017
-))
+c['status'].append(MongoDb(database="buildmaster"))
 
