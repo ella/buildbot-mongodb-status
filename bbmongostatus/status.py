@@ -113,15 +113,6 @@ class MongoDb(base.StatusReceiverMultiService):
 
         self.database.builds.insert(build.db_build)
 
-    def getDatabaseBuilder(self, number, build, time_start):
-        build = self.database.builds.find_one({
-            'number' : build.getNumber(),
-            'builder' : build.getBuilder().getName(),
-            'time_start' : build.getTimes()[0]
-        })
-        assert build is not None
-        return build
-
     def buildFinished(self, builderName, build, results):
         """
         A build has just finished. 'results' is the result tuple described
