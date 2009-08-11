@@ -2,10 +2,17 @@ from twisted.python import log
 from twisted.application import service
 
 from buildbot.status import base
+from buildbot.interfaces import (
+    LOG_CHANNEL_STDOUT,
+    LOG_CHANNEL_STDERR,
+    LOG_CHANNEL_HEADER
+)
+
 from pymongo.connection import Connection
 from pymongo.son_manipulator import AutoReference, NamespaceInjector
 from pymongo.dbref import DBRef
 from pymongo import ASCENDING
+
 
 class MongoDb(base.StatusReceiverMultiService):
     """
@@ -132,6 +139,7 @@ class MongoDb(base.StatusReceiverMultiService):
             'time_end' : None,
             'stdout' : '',
             'stderr' : '',
+            'headers' : '',
             'successful' : False,
         }
         self.database.steps.insert(step.db_step)
@@ -139,40 +147,30 @@ class MongoDb(base.StatusReceiverMultiService):
         build.db_build['steps'].append(step.db_step)
         self.database.builds.save(build.db_build)
 
-    def stepTextChanged(self, build, step, text):
-        pass
-
-    def stepText2Changed(self, build, step, text2):
-        pass
-
-    def logStarted(self, build, step, log):
-        pass
-
-    def logChunk(self, build, step, log, channel, text):
-        pass
-
-    def logFinished(self, build, step, log):
-        pass
+        step.subscribe(self)
 
     def stepFinished(self, build, step, results):
         step.db_step['time_end'] = step.getTimes()[1]
         self.database.steps.save(step.db_step)
 
-    def logStarted(build, step, log):
-        """A new Log has been started, probably because a step has just
-        started running a shell command. 'log' is the IStatusLog object
-        which can be queried for more information.
+    def logStarted(self, build, step, log):
+        log.subscribe(self, False)
 
-        This method may return an IStatusReceiver (such as 'self'), in which
-        case the target's logChunk method will be invoked as text is added to
-        the logfile. This receiver will automatically be unsubsribed when the
-        log finishes."""
+    def logChunk(self, build, step, log, channel, text):
+        """ Add log chunk to proper field """
+        if channel == LOG_CHANNEL_STDOUT:
+            step.db_step['stdout'] += text
+        elif channel == LOG_CHANNEL_STDERR:
+            step.db_step['stderr'] += text
+        elif channel == LOG_CHANNEL_HEADER:
+            step.db_step['headers'] += text
 
-    def logChunk(build, step, log, channel, text):
-        """Some text has been added to this log. 'channel' is one of
-        LOG_CHANNEL_STDOUT, LOG_CHANNEL_STDERR, or LOG_CHANNEL_HEADER, as
-        defined in IStatusLog.getChunks."""
+        self.database.steps.save(step.db_step)
 
-    def logFinished(build, step, log):
-        """A Log has been closed."""
-        
+    def logFinished(self, build, step, log):
+        """ Update log to be in synchronized, final state """
+        step.db_step['stdout'] = ''.join(log.readlines(LOG_CHANNEL_STDOUT))
+        step.db_step['stderr'] = ''.join(log.readlines(LOG_CHANNEL_STDERR))
+        step.db_step['headers'] = ''.join(log.readlines(LOG_CHANNEL_HEADER))
+
+        self.database.steps.save(step.db_step)
