@@ -99,10 +99,10 @@ class MongoDb(base.StatusReceiverMultiService):
         return self
 
     def buildStarted(self, builderName, build):
-        log.msg("Mongo: Build started")
         builder = build.getBuilder()
+        build.subscribe(self)
 
-        data = {
+        build.db_build = {
             'builder' : builder.getName(),
             'slaves' : [name for name in builder.slavenames],
             'number' : build.getNumber(),
@@ -111,7 +111,7 @@ class MongoDb(base.StatusReceiverMultiService):
             'steps' : [],
         }
 
-        self.database.builds.insert(data)
+        self.database.builds.insert(build.db_build)
 
     def getDatabaseBuilder(self, number, build, time_start):
         build = self.database.builds.find_one({
@@ -132,28 +132,28 @@ class MongoDb(base.StatusReceiverMultiService):
         @type  results:     tuple
         """
 
-        dbbuild = self.getDatabaseBuilder(number = build.getNumber(),
+        build.db_build = self.getDatabaseBuilder(number = build.getNumber(),
             build = build,
             time_start = build.getTimes()[0]
         )
 
-        dbbuild['time_end'] = build.getTimes()[1]
+        build.db_build['time_end'] = build.getTimes()[1]
 
-        self.database.builds.save(dbbuild)
+        self.database.builds.save(build.db_build)
 
     def stepStarted(self, build, step):
-        dbbuild = self.getDatabaseBuilder(number = build.getNumber(),
-            name = build.getBuilder.getName(),
-            time_start = build.getBuilder().getTimes()[0]
-        )
-        self.database.steps.insert({
-            'build' : dbbuild,
+        step.db_step = {
+            'build' : build.db_build,
             'time_start' : step.getTimes()[0],
-            'time_end' : step.getTimes()[1],
+            'time_end' : None,
             'stdout' : '',
             'stderr' : '',
-            'successful' : True,
-        })
+            'successful' : False,
+        }
+        self.database.steps.insert(step.db_step)
+
+        build.db_build['steps'].append(step.db_step)
+        self.database.builds.save(build.db_build)
 
     def stepTextChanged(self, build, step, text):
         pass
@@ -171,7 +171,8 @@ class MongoDb(base.StatusReceiverMultiService):
         pass
 
     def stepFinished(self, build, step, results):
-        pass
+        step.db_step['time_end'] = step.getTimes()[1]
+        self.database.steps.save(step.db_step)
 
     def logStarted(build, step, log):
         """A new Log has been started, probably because a step has just
