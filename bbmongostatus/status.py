@@ -1,3 +1,6 @@
+from twisted.python import log
+from twisted.application import service
+
 from buildbot.status import base
 from pymongo.connection import Connection
 from pymongo.son_manipulator import AutoReference, NamespaceInjector
@@ -13,18 +16,45 @@ class MongoDb(base.StatusReceiverMultiService):
     """
 
     def __init__(self, database, host="localhost", port=27017, username=None, password=None):
-        super(MongoDb, self).__init__()
-        self.database = database
+        base.StatusReceiverMultiService.__init__(self)
 
-        self.connection = Connection(host, port)
-        self.database = self.connection[database]
+        self.db_info = {
+            "database" : database,
+            "host" : host,
+            "port" : port,
+            "username" : username,
+            "password" : password
+        }
 
-        if username or password:
-            auth = self.database.authenticate(username, password)
-            assert auth is True
+        self.watched = []
 
+    def setServiceParent(self, parent):
+        """
+        @type  parent: L{buildbot.master.BuildMaster}
+        """
+        base.StatusReceiverMultiService.setServiceParent(self, parent)
+        self.master = parent
+        self.setup()
+
+    def setup(self):
+        self._connect()
         self._ensureStructure()
         self._setAutoReference()
+
+        self.status = self.parent.getStatus()
+        self.status.subscribe(self)
+
+    def _connect(self):
+        self.connection = Connection(self.db_info['host'], self.db_info['port'])
+        self.database = self.connection[self.db_info['database']]
+
+        if self.db_info['username'] or self.db_info['password']:
+            auth = self.database.authenticate(self.db_info['username'], self.db_info['password'])
+            if auth is not True:
+                log.msg("FATAL: Not connected to Mongo Database, authentication failed")
+                raise AssertionError("Not authenticated to use selected database")
+
+        log.msg("Connected to mongo database")
 
     def _ensureStructure(self):
         """
@@ -58,6 +88,8 @@ class MongoDb(base.StatusReceiverMultiService):
                 if index not in self.database[collection].index_information():
                     self.database[collection].create_index(index, ASCENDING)
 
+        log.msg("MongoDb indexes checked")
+
     def _setAutoReference(self):
         self.database.add_son_manipulator(NamespaceInjector())
         self.database.add_son_manipulator(AutoReference(self.database))
@@ -67,30 +99,30 @@ class MongoDb(base.StatusReceiverMultiService):
         return self
 
     def buildStarted(self, builderName, build):
+        log.msg("Mongo: Build started")
         builder = build.getBuilder()
-        buildstep = build.getBuild()
 
         data = {
             'builder' : builder.getName(),
             'slaves' : [name for name in builder.slavenames],
             'number' : build.getNumber(),
-            'time_start' : builder.getTimes()[0],
+            'time_start' : build.getTimes()[0],
             'time_end' : None,
             'steps' : [],
         }
 
         self.database.builds.insert(data)
 
-    def getDatabaseBuilder(number, name, time_start):
+    def getDatabaseBuilder(self, number, build, time_start):
         build = self.database.builds.find_one({
             'number' : build.getNumber(),
-            'builder' : builderName,
-            'time_start' : build.getBuilder().getTimes()[0]
+            'builder' : build.getBuilder().getName(),
+            'time_start' : build.getTimes()[0]
         })
         assert build is not None
         return build
 
-    def buildFinished(builderName, build, results):
+    def buildFinished(self, builderName, build, results):
         """
         A build has just finished. 'results' is the result tuple described
         in L{IBuildStatus.getResults}.
@@ -101,17 +133,17 @@ class MongoDb(base.StatusReceiverMultiService):
         """
 
         dbbuild = self.getDatabaseBuilder(number = build.getNumber(),
-            builder = builderName,
-            time_start = build.getBuilder().getTimes()[0]
+            build = build,
+            time_start = build.getTimes()[0]
         )
 
-        dbbuild['time_end'] = build.getBuilder().getTimes()[1]
+        dbbuild['time_end'] = build.getTimes()[1]
 
         self.database.builds.save(dbbuild)
 
     def stepStarted(self, build, step):
         dbbuild = self.getDatabaseBuilder(number = build.getNumber(),
-            builder = builderName,
+            name = build.getBuilder.getName(),
             time_start = build.getBuilder().getTimes()[0]
         )
         self.database.steps.insert({
@@ -141,10 +173,6 @@ class MongoDb(base.StatusReceiverMultiService):
     def stepFinished(self, build, step, results):
         pass
 
-    def builderChangedState(builderName, state):
-        """Builder 'builderName' has changed state. The possible values for
-        'state' are 'offline', 'idle', and 'building'."""
-
     def logStarted(build, step, log):
         """A new Log has been started, probably because a step has just
         started running a shell command. 'log' is the IStatusLog object
@@ -162,3 +190,4 @@ class MongoDb(base.StatusReceiverMultiService):
 
     def logFinished(build, step, log):
         """A Log has been closed."""
+        
