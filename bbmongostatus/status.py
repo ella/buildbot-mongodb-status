@@ -1,17 +1,17 @@
+from datetime import datetime
 from twisted.python import log
-from twisted.application import service
 
-from buildbot.status import base
 from buildbot.interfaces import (
     LOG_CHANNEL_STDOUT,
     LOG_CHANNEL_STDERR,
     LOG_CHANNEL_HEADER
 )
+from buildbot.status import base
+from buildbot.status.builder import SUCCESS
 
 from pymongo.connection import Connection
 from pymongo.son_manipulator import AutoReference, NamespaceInjector
 from pymongo import ASCENDING
-
 
 class MongoDb(base.StatusReceiverMultiService):
     """
@@ -74,6 +74,7 @@ class MongoDb(base.StatusReceiverMultiService):
 #            'time_end' : datetime(),
 #             'number' : number,
 #            'steps' : [step, step, step],
+#            'successful' : True,
 #            TODO: coverage : '60%'
 #        }
 #        steps = {
@@ -112,7 +113,7 @@ class MongoDb(base.StatusReceiverMultiService):
             'builder' : builder.getName(),
             'slaves' : [name for name in builder.slavenames],
             'number' : build.getNumber(),
-            'time_start' : build.getTimes()[0],
+            'time_start' : datetime.fromtimestamp(build.getTimes()[0]),
             'time_end' : None,
             'steps' : [],
         }
@@ -128,13 +129,13 @@ class MongoDb(base.StatusReceiverMultiService):
         @type  build:       L{buildbot.status.builder.BuildStatus}
         @type  results:     tuple
         """
-        build.db_build['time_end'] = build.getTimes()[1]
+        build.db_build['time_end'] = datetime.fromtimestamp(build.getTimes()[1])
         self.database.builds.save(build.db_build)
 
     def stepStarted(self, build, step):
         step.db_step = {
             'build' : build.db_build,
-            'time_start' : step.getTimes()[0],
+            'time_start' : datetime.fromtimestamp(step.getTimes()[0]),
             'time_end' : None,
             'stdout' : '',
             'stderr' : '',
@@ -149,7 +150,22 @@ class MongoDb(base.StatusReceiverMultiService):
         step.subscribe(self)
 
     def stepFinished(self, build, step, results):
-        step.db_step['time_end'] = step.getTimes()[1]
+        result, strings = results
+        # TODO: Strings should be appended to overall status report,
+        # not available at this time
+
+        # get result contasts as
+        # from buildbot.status.builder import SUCCESS, WARNINGS, FAILURE, SKIPPED
+        # we'll store constants as it's easy for cthulhu bot to i18n
+
+        step.db_step['result'] = result
+        if result == SUCCESS:
+            step.db_step['successful'] = True
+        else:
+            build.db_build['successful'] = False
+            self.database.builds.save(build.db_build)
+
+        step.db_step['time_end'] = datetime.fromtimestamp(step.getTimes()[1])
         self.database.steps.save(step.db_step)
 
     def logStarted(self, build, step, log):
