@@ -10,7 +10,6 @@ from buildbot.interfaces import (
 
 from pymongo.connection import Connection
 from pymongo.son_manipulator import AutoReference, NamespaceInjector
-from pymongo.dbref import DBRef
 from pymongo import ASCENDING
 
 
