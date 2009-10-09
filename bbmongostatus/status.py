@@ -32,6 +32,8 @@ class MongoDb(base.StatusReceiverMultiService):
             "password" : password
         }
 
+        self.master_id = None
+
         self.watched = []
 
     def setServiceParent(self, parent):
@@ -60,7 +62,7 @@ class MongoDb(base.StatusReceiverMultiService):
                 log.msg("FATAL: Not connected to Mongo Database, authentication failed")
                 raise AssertionError("Not authenticated to use selected database")
 
-        log.msg("Connected to mongo database")
+        log.msg("Connected to mongo database %s" % self.db_info['database'])
 
     def _ensureStructure(self):
         """
@@ -69,6 +71,7 @@ class MongoDb(base.StatusReceiverMultiService):
         # we're now appending into following collections:
 #        builds = {
 #            'builder' : buildername,
+#            'builder_id' : ident or None
 #            'slave' : slavename,
 #            'time_start' : datetime(),
 #            'time_end' : datetime(),
@@ -85,9 +88,17 @@ class MongoDb(base.StatusReceiverMultiService):
 #            'stderr' : '',
 #            'successful' : True,
 #        }
+
+#        builders = {
+#            'name' : buildername,
+#            'id' : ident_id or None,
+#            'status' : str()
+#        }
+
         indexes = {
             'builds' : ['builder', 'slave', 'time_stop'],
             'steps' : ['build', 'time_stop', 'successful'],
+            'builders' : ['master_id']
         }
 
         for collection in indexes:
@@ -100,10 +111,31 @@ class MongoDb(base.StatusReceiverMultiService):
     def _setAutoReference(self):
         self.database.add_son_manipulator(NamespaceInjector())
         self.database.add_son_manipulator(AutoReference(self.database))
-    
+
     def builderAdded(self, name, builder):
         self.watched.append(builder)
+        builder = {
+            'name' : name,
+            'master_id' : self.master_id,
+            #FIXME: proper state constraint
+            'status' : 'offline'
+        }
+        self.database.builders.save(builder)
         return self
+
+    def builderChangedState(self, builderName, state):
+        builder = self.database.builders.find_one({'name' : builderName, 'master_id' : self.master_id})
+        if not builder:
+            builder = {
+                'name' : builderName,
+                'master_id' : self.master_id
+            }
+        builder['status'] = state
+        self.database.builders.save(builder)
+
+    def builderRemoved(self, name, builder):
+        del self.watched[self.watched.index(builder)]
+
 
     def buildStarted(self, builderName, build):
         builder = build.getBuilder()
