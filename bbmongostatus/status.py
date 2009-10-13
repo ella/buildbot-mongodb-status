@@ -21,7 +21,7 @@ class MongoDb(base.StatusReceiverMultiService):
     introspectin/parsing/status reports/cthulhubot feeding
     """
 
-    def __init__(self, database, host="localhost", port=27017, username=None, password=None):
+    def __init__(self, database, host="localhost", port=27017, username=None, password=None, master_id=None):
         base.StatusReceiverMultiService.__init__(self)
 
         self.db_info = {
@@ -32,7 +32,7 @@ class MongoDb(base.StatusReceiverMultiService):
             "password" : password
         }
 
-        self.master_id = None
+        self.master_id = master_id
 
         self.watched = []
 
@@ -112,26 +112,27 @@ class MongoDb(base.StatusReceiverMultiService):
         self.database.add_son_manipulator(NamespaceInjector())
         self.database.add_son_manipulator(AutoReference(self.database))
 
-    def builderAdded(self, name, builder):
-        self.watched.append(builder)
-        builder = {
-            'name' : name,
-            'master_id' : self.master_id,
-            #FIXME: proper state constraint
-            'status' : 'offline'
-        }
-        self.database.builders.save(builder)
-        return self
-
-    def builderChangedState(self, builderName, state):
+    def _databaseBuilderChangedState(self, builderName, state):
+        log.msg("buildbot-mongodb-status: Builder %s chnaged state" % builderName)
         builder = self.database.builders.find_one({'name' : builderName, 'master_id' : self.master_id})
+
         if not builder:
+            log.msg("buildbot-mongodb-status: Builder %s not found, creating" % builderName)
             builder = {
                 'name' : builderName,
                 'master_id' : self.master_id
             }
         builder['status'] = state
         self.database.builders.save(builder)
+        log.msg("buildbot-mongodb-status: Builder %s saved" % builder)
+
+    def builderAdded(self, name, builder):
+        self.watched.append(builder)
+        self._databaseBuilderChangedState(name, 'offline')
+        return self
+
+    def builderChangedState(self, builderName, state):
+        self._databaseBuilderChangedState(builderName, state)
 
     def builderRemoved(self, name, builder):
         del self.watched[self.watched.index(builder)]
