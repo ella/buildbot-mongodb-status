@@ -149,6 +149,7 @@ class MongoDb(base.StatusReceiverMultiService):
             'time_start' : datetime.fromtimestamp(build.getTimes()[0]),
             'time_end' : None,
             'steps' : [],
+            'result' : 'unknown',
         }
 
         self.database.builds.insert(build.db_build)
@@ -163,6 +164,7 @@ class MongoDb(base.StatusReceiverMultiService):
         @type  results:     tuple
         """
         build.db_build['time_end'] = datetime.fromtimestamp(build.getTimes()[1])
+        build.db_build['result'] = results
         self.database.builds.save(build.db_build)
 
     def stepStarted(self, build, step):
