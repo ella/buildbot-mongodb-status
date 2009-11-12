@@ -113,7 +113,6 @@ class MongoDb(base.StatusReceiverMultiService):
         self.database.add_son_manipulator(AutoReference(self.database))
 
     def _databaseBuilderChangedState(self, builderName, state):
-        log.msg("buildbot-mongodb-status: Builder %s chnaged state" % builderName)
         builder = self.database.builders.find_one({'name' : builderName, 'master_id' : self.master_id})
 
         if not builder:
@@ -168,6 +167,7 @@ class MongoDb(base.StatusReceiverMultiService):
         self.database.builds.save(build.db_build)
 
     def stepStarted(self, build, step):
+        log.msg("buildbot-mongodb-status: Step started")
         step.db_step = {
             'time_start' : datetime.fromtimestamp(step.getTimes()[0]),
             'time_end' : None,
@@ -182,6 +182,7 @@ class MongoDb(base.StatusReceiverMultiService):
         self.database.builds.save(build.db_build)
 
         step.subscribe(self)
+        log.msg("buildbot-mongodb-status: Step %s started" % str(step))
 
     def stepFinished(self, build, step, results):
         result, strings = results
@@ -201,6 +202,7 @@ class MongoDb(base.StatusReceiverMultiService):
 
         step.db_step['time_end'] = datetime.fromtimestamp(step.getTimes()[1])
         self.database.steps.save(step.db_step)
+        log.msg("buildbot-mongodb-status: Step %s finished" % str(step))
 
     def logStarted(self, build, step, log):
         log.subscribe(self, False)
