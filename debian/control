@@ -7,6 +7,6 @@ Standards-Version: 3.7.2
 
 Package: centrum-python-buildbot-mongodb-status
 Architecture: all
-Depends: ${python:Depends}, ${misc:Depends}, python-buildbot (>= 0.11)
+Depends: ${python:Depends}, ${misc:Depends}, buildbot (>= 0.11)
 Description: Buildbot status reporter for storing results in mongo database
 
