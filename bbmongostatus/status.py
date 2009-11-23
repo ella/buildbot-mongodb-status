@@ -11,7 +11,7 @@ from buildbot.status.builder import SUCCESS
 
 from pymongo.connection import Connection
 from pymongo.son_manipulator import AutoReference, NamespaceInjector
-from pymongo import ASCENDING
+from pymongo import ASCENDING, DESCENDING
 
 class MongoDb(base.StatusReceiverMultiService):
     """
@@ -96,15 +96,15 @@ class MongoDb(base.StatusReceiverMultiService):
 #        }
 
         indexes = {
-            'builds' : ['builder', 'slave', 'time_end'],
-            'steps' : ['build', 'time_end', 'successful'],
-            'builders' : ['master_id']
+            'builds' : [('number', DESCENDING), ('builder', ASCENDING), ('slave', ASCENDING), ('time_end', ASCENDING)],
+            'steps' : [('build', ASCENDING), ('time_end', ASCENDING), ('successful', ASCENDING)],
+            'builders' : [('master_id', ASCENDING)]
         }
 
         for collection in indexes:
-            for index in indexes[collection]:
+            for index, order in indexes[collection]:
                 if index not in self.database[collection].index_information():
-                    self.database[collection].create_index(index, ASCENDING)
+                    self.database[collection].create_index(index, order)
 
         log.msg("MongoDb indexes checked")
 
