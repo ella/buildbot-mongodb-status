@@ -138,6 +138,10 @@ class MongoDb(base.StatusReceiverMultiService):
 
 
     def buildStarted(self, builderName, build):
+        changeset = build.getSourceStamp().revision
+        if not changeset:
+            changeset = 'latest'
+
         builder = build.getBuilder()
         build.subscribe(self)
 
@@ -149,6 +153,7 @@ class MongoDb(base.StatusReceiverMultiService):
             'time_end' : None,
             'steps' : [],
             'result' : 'unknown',
+            'changeset' : changeset
         }
 
         self.database.builds.insert(build.db_build)
@@ -175,6 +180,7 @@ class MongoDb(base.StatusReceiverMultiService):
             'stderr' : '',
             'headers' : '',
             'successful' : False,
+            'name' : step.name
         }
         self.database.steps.insert(step.db_step)
 
