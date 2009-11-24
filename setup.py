@@ -1,6 +1,7 @@
 from setuptools import setup, find_packages
 
 import bbmongostatus as proj
+
 setup(
     name = 'bbmongostatus',
     version = proj.__versionstr__,
