@@ -138,12 +138,19 @@ class MongoDb(base.StatusReceiverMultiService):
 
 
     def buildStarted(self, builderName, build):
+        # changeset from source stamp might be "broken" as in "symbolic"
+        # (aka empty or HEAD). This can/should be fixed later by step
+        # that will rev-parse it
+
         changeset = build.getSourceStamp().revision
         if not changeset:
-            changeset = 'latest'
+            changeset = None
 
         builder = build.getBuilder()
         build.subscribe(self)
+
+        # only 'fake' associated, not real thing
+        build.changeset_associated = False
 
         build.db_build = {
             'builder' : builder.getName(),
@@ -207,8 +214,19 @@ class MongoDb(base.StatusReceiverMultiService):
             self.database.builds.save(build.db_build)
 
         step.db_step['time_end'] = datetime.fromtimestamp(step.getTimes()[1])
+
         self.database.steps.save(step.db_step)
         log.msg("buildbot-mongodb-status: Step %s finished" % str(step))
+
+        # we want to associate with build ASAP, i.e. after first step that associate with changeset,
+        # not as late as in buildFinished
+        
+        # build is actually BuildStatus, so get a build
+        if not build.changeset_associated and getattr(build, "changeset", None):
+            build.db_build['changeset'] = build.changeset
+            self.database.builds.save(build.db_build)
+            build.changeset_associated = True
+            log.msg("buildbot-mongodb-status: Build %s associated with revision %s" % (str(build), str(build.changeset)))
 
     def logStarted(self, build, step, log):
         log.subscribe(self, False)
