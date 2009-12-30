@@ -178,6 +178,25 @@ class MongoDb(base.StatusReceiverMultiService):
         build.db_build['result'] = results
         self.database.builds.save(build.db_build)
 
+        # if we detected proper chagneset, denormalize result
+        if build.changeset_associated and getattr(build, "changeset", None):
+            result = {
+                "time_start" : build.db_build['time_start'],
+                "time_end" : build.db_build['time_end'],
+                "result" : results,
+                "build" : build.db_build
+            }
+
+            changeset = self.dabase.repository.find_one(changeset=build.changeset) or {
+                "changeset" : build.changeset
+            }
+            if 'builds' not in changeset:
+                changeset.builds = []
+            changeset.builds.append(result)
+
+            self.database.repository.save(changeset)
+
+
     def stepStarted(self, build, step):
         log.msg("buildbot-mongodb-status: Step started")
         step.db_step = {
