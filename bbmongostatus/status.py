@@ -178,7 +178,7 @@ class MongoDb(base.StatusReceiverMultiService):
         build.db_build['result'] = results
         self.database.builds.save(build.db_build)
 
-        # if we detected proper chagneset, denormalize result
+        # if we detected proper changeset, denormalize result
         if build.changeset_associated and getattr(build, "changeset", None):
             result = {
                 "time_start" : build.db_build['time_start'],
@@ -187,15 +187,17 @@ class MongoDb(base.StatusReceiverMultiService):
                 "build" : build.db_build
             }
 
-            changeset = self.dabase.repository.find_one(changeset=build.changeset) or {
+            changeset = self.database.repository.find_one({"changeset" : build.changeset}) or {
                 "changeset" : build.changeset
             }
             if 'builds' not in changeset:
-                changeset.builds = []
-            changeset.builds.append(result)
+                changeset['builds'] = []
+            changeset['builds'].append(result)
 
             self.database.repository.save(changeset)
 
+        # clean references to mongo database, so whole thingies are pickable
+        del build.db_build
 
     def stepStarted(self, build, step):
         log.msg("buildbot-mongodb-status: Step started")
@@ -246,6 +248,9 @@ class MongoDb(base.StatusReceiverMultiService):
             self.database.builds.save(build.db_build)
             build.changeset_associated = True
             log.msg("buildbot-mongodb-status: Build %s associated with revision %s" % (str(build), str(build.changeset)))
+
+        # clean references to mongo database, so whole thingies are pickable
+        del step.db_step
 
     def logStarted(self, build, step, log):
         log.subscribe(self, False)
