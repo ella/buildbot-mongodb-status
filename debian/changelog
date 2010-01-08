@@ -1,6 +1,6 @@
-centrum-python-buildbot-mongodb-status (0.0.0) unstable; urgency=low
+centrum-python-buildbot-mongodb-status (0.4.0) unstable; urgency=low
 
-  * initial build
+  * automatic build
 
  -- Lukas Linhart <lukas.linhart@centrumholdings.com>  Fri, 13 Mar 2009 16:37:07 +0100
 
