@@ -3,10 +3,54 @@ Buildbot-Mongodb-Status
 
 Status reporter for feeding buildbot statuses into mongodb database.
 
-Warning: No tests ahead (yeat). Still work in progress.
+This is used as a library by CthulhuBot [1] and is tested from it
+(definitely not ideal, but workable until I learn how to mock with
+BuildBot properly).
 
-Example:
+
+
+[1] http://github.com/ella/cthulhubot
+
+Simple Example:
 
 from bbmongostatus.status import MongoDb
 c['status'].append(MongoDb(database="buildmaster"))
 
+
+Also, You can access more complicated deployments:
+
+MongoDb(database="build_status", host="my-storage",
+port=12345, username="statuser", password="topsecret",
+master_id="identifier")
+
+master_id is used to distinguish between multiple buildmasters
+storing builds in same database.
+
+Following example collections and corresponding JSONs are stored:
+	
+
+	builders : {
+	    'name' : "string",
+	    'master_id' : <int>,
+	    "status" : "string"
+	}
+        builds : {
+            'builder' : "string",
+            'slaves' : ["builder", "slave", "names"],
+            'number' : int,
+            'time_start' : timestamp,
+            'time_end' : timestamp,
+            'steps' : [<References>, <to>, <steps>, <below>],
+            'result' : "string for now",
+            'changeset' : "changeset from sourcestamp retrieved"
+        }
+
+	steps : {
+            'time_start' : timestamp,
+            'time_end' : timestamp or None,
+            'stdout' : 'string',
+            'stderr' : 'string',
+            'headers' : 'string',
+            'successful' : bool,
+            'name' : "string"
+        }
