@@ -159,7 +159,7 @@ class MongoDb(base.StatusReceiverMultiService):
             'time_start' : datetime.fromtimestamp(build.getTimes()[0]),
             'time_end' : None,
             'steps' : [],
-            'result' : 'unknown',
+            'result' : 'running',
             'changeset' : changeset
         }
 
@@ -208,7 +208,7 @@ class MongoDb(base.StatusReceiverMultiService):
             'stderr' : '',
             'headers' : '',
             'output' : '',
-            'successful' : False,
+            'successful' : None,
             'name' : step.name
         }
         self.database.steps.insert(step.db_step)
