@@ -188,7 +188,7 @@ class MongoDb(base.StatusReceiverMultiService):
             'time_start' : datetime.fromtimestamp(build.getTimes()[0]),
             'time_end' : None,
             'steps' : [],
-            'result' : 'unknown',
+            'result' : 'running',
             'changeset' : changeset
         })
 
@@ -236,7 +236,8 @@ class MongoDb(base.StatusReceiverMultiService):
             'stdout' : '',
             'stderr' : '',
             'headers' : '',
-            'successful' : False,
+            'output' : '',
+            'successful' : None,
             'name' : step.name
         })
         self.database.steps.insert(step.db_step)
@@ -293,6 +294,8 @@ class MongoDb(base.StatusReceiverMultiService):
         elif channel == LOG_CHANNEL_HEADER:
             step.db_step['headers'] += text
 
+        step.db_step['output'] += text
+
         self.database.steps.save(step.db_step)
 
     def logFinished(self, build, step, log):
@@ -300,5 +303,7 @@ class MongoDb(base.StatusReceiverMultiService):
         step.db_step['stdout'] = ''.join(log.readlines(LOG_CHANNEL_STDOUT))
         step.db_step['stderr'] = ''.join(log.readlines(LOG_CHANNEL_STDERR))
         step.db_step['headers'] = ''.join(log.readlines(LOG_CHANNEL_HEADER))
+
+        step.db_step['output'] = ''.join(log.getTextWithHeaders())
 
         self.database.steps.save(step.db_step)
