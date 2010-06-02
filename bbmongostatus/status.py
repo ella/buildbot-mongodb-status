@@ -13,6 +13,35 @@ from pymongo.connection import Connection
 from pymongo.son_manipulator import AutoReference, NamespaceInjector
 from pymongo import ASCENDING, DESCENDING
 
+
+class MongoValueWrapper(dict):
+    """
+    Specified NONPICKEABLE_KEYS are magically stored as attributes instead of keys.
+    This is then used to omit them when pickling this dictionary.
+    """
+
+    NONPICKLEABLE_KEYS = ("_ns", "_id")
+
+    def __getstate__(self):
+        obj_dict = self.__dict__.copy()
+        for key in self.NONPICKLEABLE_KEYS:
+            if key in obj_dict:
+                del obj_dict[key]
+        return obj_dict
+
+    def __getitem__(self, key):
+        if key in self.NONPICKLEABLE_KEYS and hasattr(self, key):
+            return getattr(self, key)
+        else:
+            return super(MongoValueWrapper, self).__getitem__(key)
+
+    def __setitem__(self, key, value):
+        if key in self.NONPICKLEABLE_KEYS:
+            return setattr(self, key, value)
+        else:
+            return super(MongoValueWrapper, self).__setitem__(key, value)
+
+
 class MongoDb(base.StatusReceiverMultiService):
     """
     Documentation is TODO ;)
@@ -152,7 +181,7 @@ class MongoDb(base.StatusReceiverMultiService):
         # only 'fake' associated, not real thing
         build.changeset_associated = False
 
-        build.db_build = {
+        build.db_build = MongoValueWrapper({
             'builder' : builder.getName(),
             'slaves' : [name for name in builder.slavenames],
             'number' : build.getNumber(),
@@ -161,7 +190,7 @@ class MongoDb(base.StatusReceiverMultiService):
             'steps' : [],
             'result' : 'unknown',
             'changeset' : changeset
-        }
+        })
 
         self.database.builds.insert(build.db_build)
 
@@ -201,7 +230,7 @@ class MongoDb(base.StatusReceiverMultiService):
 
     def stepStarted(self, build, step):
         log.msg("buildbot-mongodb-status: Step started")
-        step.db_step = {
+        step.db_step = MongoValueWrapper({
             'time_start' : datetime.fromtimestamp(step.getTimes()[0]),
             'time_end' : None,
             'stdout' : '',
@@ -209,7 +238,7 @@ class MongoDb(base.StatusReceiverMultiService):
             'headers' : '',
             'successful' : False,
             'name' : step.name
-        }
+        })
         self.database.steps.insert(step.db_step)
 
         build.db_build['steps'].append(step.db_step)
