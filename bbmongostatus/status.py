@@ -248,8 +248,8 @@ class MongoDb(base.StatusReceiverMultiService):
         if result == SUCCESS:
             step.db_step['successful'] = True
             build.db_build['successful'] = True
-            for step in build.db_build['steps']:
-                if step['successful'] is not True:
+            for s in build.db_build['steps']:
+                if s['successful'] is not True:
                     build.db_build['successful'] = False
         else:
             step.db_step['successful'] = False
