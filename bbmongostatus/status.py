@@ -1,4 +1,5 @@
 from datetime import datetime
+from itertools import chain
 from twisted.python import log
 
 from buildbot.interfaces import (
@@ -7,39 +8,11 @@ from buildbot.interfaces import (
     LOG_CHANNEL_HEADER
 )
 from buildbot.status import base
-from buildbot.status.builder import SUCCESS
+from buildbot.status.builder import BuildStatus, SUCCESS
 
 from pymongo.connection import Connection
 from pymongo.son_manipulator import AutoReference, NamespaceInjector
 from pymongo import ASCENDING, DESCENDING
-
-
-class MongoValueWrapper(dict):
-    """
-    Specified NONPICKEABLE_KEYS are magically stored as attributes instead of keys.
-    This is then used to omit them when pickling this dictionary.
-    """
-
-    NONPICKLEABLE_KEYS = ("_ns", "_id")
-
-    def __getstate__(self):
-        obj_dict = self.__dict__.copy()
-        for key in self.NONPICKLEABLE_KEYS:
-            if key in obj_dict:
-                del obj_dict[key]
-        return obj_dict
-
-    def __getitem__(self, key):
-        if key in self.NONPICKLEABLE_KEYS and hasattr(self, key):
-            return getattr(self, key)
-        else:
-            return super(MongoValueWrapper, self).__getitem__(key)
-
-    def __setitem__(self, key, value):
-        if key in self.NONPICKLEABLE_KEYS:
-            return setattr(self, key, value)
-        else:
-            return super(MongoValueWrapper, self).__setitem__(key, value)
 
 
 class MongoDb(base.StatusReceiverMultiService):
@@ -133,7 +106,7 @@ class MongoDb(base.StatusReceiverMultiService):
         for collection in indexes:
             for index, order in indexes[collection]:
                 if index not in self.database[collection].index_information():
-                    self.database[collection].create_index(index, order)
+                    self.database[collection].create_index(index, order, unique=False)
 
         log.msg("MongoDb indexes checked")
 
@@ -181,7 +154,20 @@ class MongoDb(base.StatusReceiverMultiService):
         # only 'fake' associated, not real thing
         build.changeset_associated = False
 
-        build.db_build = MongoValueWrapper({
+
+        # monkeypatch __getstate__
+
+        def promising_getstate():
+            ATTRIBUTES_TO_SKIP = ("db_build", "__getstate__")
+            attrs = BuildStatus.__getstate__(build)
+            for i in ATTRIBUTES_TO_SKIP:
+                if i in attrs:
+                    del attrs[i]
+            return attrs
+
+        build.__getstate__ = promising_getstate
+
+        build.db_build = {
             'builder' : builder.getName(),
             'slaves' : [name for name in builder.slavenames],
             'number' : build.getNumber(),
@@ -190,7 +176,7 @@ class MongoDb(base.StatusReceiverMultiService):
             'steps' : [],
             'result' : 'running',
             'changeset' : changeset
-        })
+        }
 
         self.database.builds.insert(build.db_build)
 
@@ -205,6 +191,7 @@ class MongoDb(base.StatusReceiverMultiService):
         """
         build.db_build['time_end'] = datetime.fromtimestamp(build.getTimes()[1])
         build.db_build['result'] = results
+
         self.database.builds.save(build.db_build)
 
         # if we detected proper changeset, denormalize result
@@ -229,8 +216,7 @@ class MongoDb(base.StatusReceiverMultiService):
         del build.db_build
 
     def stepStarted(self, build, step):
-        log.msg("buildbot-mongodb-status: Step started")
-        step.db_step = MongoValueWrapper({
+        step.db_step = {
             'time_start' : datetime.fromtimestamp(step.getTimes()[0]),
             'time_end' : None,
             'stdout' : '',
@@ -239,14 +225,15 @@ class MongoDb(base.StatusReceiverMultiService):
             'output' : '',
             'successful' : None,
             'name' : step.name
-        })
+        }
         self.database.steps.insert(step.db_step)
 
         build.db_build['steps'].append(step.db_step)
+
         self.database.builds.save(build.db_build)
 
         step.subscribe(self)
-        log.msg("buildbot-mongodb-status: Step %s started" % str(step))
+        log.msg("buildbot-mongodb-status: Step %s for build %s started" % (str(step.db_step['_id']), str(build.db_build['_id'])))
 
     def stepFinished(self, build, step, results):
         result, strings = results
