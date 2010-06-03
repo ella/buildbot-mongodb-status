@@ -247,9 +247,13 @@ class MongoDb(base.StatusReceiverMultiService):
         step.db_step['result'] = result
         if result == SUCCESS:
             step.db_step['successful'] = True
+            build.db_build['successful'] = True
+            for step in build.db_build['steps']:
+                if step['successful'] is not True:
+                    build.db_build['successful'] = False
         else:
+            step.db_step['successful'] = False
             build.db_build['successful'] = False
-            self.database.builds.save(build.db_build)
 
         step.db_step['time_end'] = datetime.fromtimestamp(step.getTimes()[1])
 
@@ -262,9 +266,10 @@ class MongoDb(base.StatusReceiverMultiService):
         # build is actually BuildStatus, so get a build
         if not build.changeset_associated and getattr(build, "changeset", None):
             build.db_build['changeset'] = build.changeset
-            self.database.builds.save(build.db_build)
             build.changeset_associated = True
             log.msg("buildbot-mongodb-status: Build %s associated with revision %s" % (str(build), str(build.changeset)))
+
+        self.database.builds.save(build.db_build)
 
         # clean references to mongo database, so whole thingies are pickable
         del step.db_step
